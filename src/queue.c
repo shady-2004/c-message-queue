@@ -63,3 +63,59 @@ err_free_buffer:
     return NULL;
 
 }
+
+queue_result_t queue_push(queue_t *q , void*item){
+    if (!q) return QUEUE_ERR_INVALID;
+
+    pthread_mutex_lock(&q->lock);
+
+    // Wail while buffer is full and queue is operating
+    while (q->count == q->capacity && !q->is_shutdown){
+        pthread_cond_wait(&q->not_full, &q->lock);
+    }
+
+    if (q->is_shutdown) { 
+        pthread_mutex_unlock(&q->lock);
+        return QUEUE_ERR_SHUTDOWN;
+    }
+
+    //Place item and the end and advance the tail
+    q->buffer[q->tail] = item;
+    q->tail = ( q->tail + 1 ) %  q->capacity;
+    q->count++;
+
+    //Signal for waiting consumers 
+    pthread_cond_signal(&q->not_empty);
+
+    pthread_mutex_unlock(&q->lock);
+    return QUEUE_SUCCESS;
+
+}
+
+queue_result_t queue_pop(queue_t *q , void**item_out){
+    if (!q || !item_out) return QUEUE_ERR_INVALID;
+
+    pthread_mutex_lock(&q->lock);
+
+    // Wail while buffer is empty and queue is operating
+    while (q->count == 0 && !q->is_shutdown){
+        pthread_cond_wait(&q->not_empty, &q->lock);
+    }
+
+    if (q->is_shutdown) { 
+        pthread_mutex_unlock(&q->lock);
+        return QUEUE_ERR_SHUTDOWN;
+    }
+
+    //Extract item and advance head
+    *item_out = q->buffer[q->head];
+    q->head = ( q->head + 1 ) %  q->capacity;
+    q->count--;
+
+    //Signal for waiting producer
+    pthread_cond_signal(&q->not_full);
+
+    pthread_mutex_unlock(&q->lock);
+    return QUEUE_SUCCESS;
+
+}
