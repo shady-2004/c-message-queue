@@ -119,3 +119,30 @@ queue_result_t queue_pop(queue_t *q , void**item_out){
     return QUEUE_SUCCESS;
 
 }
+
+void queue_shutdown(queue_t *q){
+    if (!q) return;
+
+    pthread_mutex_lock(&q->lock);
+    q->is_shutdown = true;
+
+    //Wake all sleeping threads so they can exist
+    pthread_cond_broadcast(&q->not_full);
+    pthread_cond_broadcast(&q->not_empty);
+
+    pthread_mutex_unlock(&q->lock);
+}
+
+void queue_destroy(queue_t *q){
+    if (!q) return;
+
+    queue_shutdown(q);
+
+    pthread_mutex_destroy(&q->lock);
+    pthread_cond_destroy(&q->not_empty);
+    pthread_cond_destroy(&q->not_full);
+
+    free(q->buffer);
+    free(q);
+
+}
